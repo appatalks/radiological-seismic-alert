@@ -1,6 +1,7 @@
 import requests
 import datetime
 import argparse
+import os
 
 # Constants
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
@@ -10,25 +11,60 @@ DEPTH_THRESHOLD = 2.0  # Maximum depth (in km)
 RADIATION_SPIKE_THRESHOLD_CPM = 125  # Example threshold for radiation in CPM
 REQUEST_TIMEOUT = 15  # Timeout for API requests in seconds
 
+# Bluesky API Functions
+def bsky_login_session(pds_url: str, handle: str, password: str):
+    resp = requests.post(
+        pds_url + "/xrpc/com.atproto.server.createSession",
+        json={"identifier": handle, "password": password},
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def create_bsky_post(session, pds_url, post_content, embed=None):
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    post = {
+        "$type": "app.bsky.feed.post",
+        "text": post_content,
+        "createdAt": now,
+    }
+    if embed:
+        post["embed"] = embed
+    
+    try:
+        resp = requests.post(
+            pds_url + "/xrpc/com.atproto.repo.createRecord",
+            headers={"Authorization": f"Bearer {session['accessJwt']}"},
+            json={
+                "repo": session["did"],
+                "collection": "app.bsky.feed.post",
+                "record": post,
+            },
+        )
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error: {e}")
+        print(f"Response Status Code: {resp.status_code}")
+        print(f"Response Content: {resp.text}")
+        raise
+
+    return resp.json()
+
+# Seismic and Radiation Functions
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=10)  # Expand to the last 10 minutes
+    past = now - datetime.timedelta(minutes=10)
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
         "endtime": now.isoformat(),
-        "minmagnitude": 0  # Fetch all events regardless of magnitude
+        "minmagnitude": 0,
     }
     print(f"[INFO] Fetching USGS events from {past} to {now}...")
     try:
         response = requests.get(USGS_URL, params=params, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         events = response.json().get("features", [])
-        if events:
-            return events
-        else:
-            print("[INFO] No seismic events detected.")
-            return []
+        return events if events else []
     except requests.exceptions.Timeout:
         print("[WARNING] Timeout occurred while fetching USGS data.")
         return []
@@ -37,11 +73,10 @@ def get_usgs_events():
         return []
 
 def get_nearest_radiation_sample(lat, lon):
-    # https://api.safecast.org/en-US/home
     params = {
-        "distance": 20,  # Distance in kilometers
+        "distance": 20,
         "latitude": lat,
-        "longitude": lon
+        "longitude": lon,
     }
     try:
         print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon}) with a distance of {params['distance']} km...")
@@ -51,22 +86,16 @@ def get_nearest_radiation_sample(lat, lon):
         # Debug: Log the raw response content
         print(f"[DEBUG] Raw Safecast API Response: {response.text}")
 
-        # Parse JSON data
         data = response.json()
         if data and "measurements" in data and data["measurements"]:
             nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
             radiation_value = float(nearest_sample["value"])
             unit = nearest_sample.get("unit", "unknown")
             timestamp = nearest_sample["captured_at"]
-
-            print(f"[INFO] Nearest radiation sample: {radiation_value:.2f} {unit} at {timestamp}")
             return radiation_value, unit, timestamp
-        else:
-            print("[INFO] No radiation samples found in the specified area.")
-            return None, None, None
+        return None, None, None
     except requests.exceptions.JSONDecodeError:
         print("[ERROR] Invalid JSON response from Safecast API.")
-        print(f"[DEBUG] Raw Response Content: {response.content.decode('utf-8', errors='ignore')}")
         return None, None, None
     except requests.exceptions.Timeout:
         print("[WARNING] Timeout occurred while fetching Safecast data.")
@@ -74,6 +103,24 @@ def get_nearest_radiation_sample(lat, lon):
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] An error occurred: {e}")
         return None, None, None
+
+def post_alert_to_bsky(lat, lon, magnitude, depth, radiation_level, radiation_unit, radiation_time):
+    pds_url = "https://bsky.social"
+    handle = os.getenv("BLUESKY_HANDLE")
+    password = os.getenv("BLUESKY_PASSWORD")
+
+    session = bsky_login_session(pds_url, handle, password)
+
+    post_content = (
+        f"⚠️ Alert: Possible Detonation Detected ⚠️\n\n"
+        f"Location: ({lat}, {lon})\n"
+        f"Seismic Event: Magnitude {magnitude}, Depth {depth} km\n"
+        f"Radiation Level: {radiation_level:.2f} {radiation_unit}\n"
+        f"Captured At: {radiation_time}\n\n"
+        f"#SeismicActivity #RadiationAlert"
+    )
+    
+    create_bsky_post(session, pds_url, post_content)
 
 def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     if simulate_lat and simulate_lon and simulate_radiation:
@@ -95,28 +142,16 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     magnitude = props.get("mag", "Unknown")
     depth = geo[2] if len(geo) > 2 else "Unknown"
     lat, lon = geo[1], geo[0]
-    event_time = datetime.datetime.fromtimestamp(props["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S UTC") if "time" in props else "Unknown"
-
-    print(f"[INFO] Most recent seismic event:")
-    print(f"  - Magnitude: {magnitude}")
-    print(f"  - Depth: {depth} km")
-    print(f"  - Location: ({lat}, {lon})")
-    print(f"  - Time: {event_time}")
+    event_time = datetime.datetime.fromtimestamp(props["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     radiation_level, radiation_unit, radiation_time = get_nearest_radiation_sample(lat, lon)
-    if radiation_level is not None:
-        print(f"[INFO] Nearest radiation sample:")
-        print(f"  - Radiation Level: {radiation_level:.2f} {radiation_unit}")
-        print(f"  - Time: {radiation_time}")
-    else:
-        print("[INFO] No radiation samples available for this location.")
-
-    if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth != "Unknown" and depth <= DEPTH_THRESHOLD:
-        if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
+    if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth <= DEPTH_THRESHOLD:
+        if radiation_level and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
             print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
             print(f"[DETAILS] Detected radiation level: {radiation_level:.2f} {radiation_unit}")
             print(f"[DETAILS] Radiation sample captured at: {radiation_time}")
-            return        
+            post_alert_to_bsky(lat, lon, magnitude, depth, radiation_level, radiation_unit, radiation_time)
+            return
 
     print("[INFO] No significant events detected.")
 
