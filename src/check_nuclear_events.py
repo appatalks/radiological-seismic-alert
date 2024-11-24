@@ -1,7 +1,6 @@
 import requests
 import datetime
 import argparse
-import time
 
 # Constants
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
@@ -9,7 +8,6 @@ SAFECAST_URL = "https://api.safecast.org/measurements"
 MAG_THRESHOLD = 4.0  # Minimum magnitude
 DEPTH_THRESHOLD = 10.0  # Maximum depth (in km)
 RADIATION_SPIKE_THRESHOLD = 2.0  # Example threshold for radiation increase
-MAX_RETRIES = 3  # Maximum number of retries for API requests
 REQUEST_TIMEOUT = 10  # Timeout for API requests in seconds
 
 def get_usgs_events():
@@ -40,31 +38,32 @@ def get_nearest_radiation_sample(lat, lon):
         "longitude": lon,
         "distance": 10  # Check within 10 km
     }
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon}), attempt {attempt}...")
-            response = requests.get(SAFECAST_URL, params=params, timeout=REQUEST_TIMEOUT)
-            if response.status_code == 200:
-                data = response.json()
-                if data and data["measurements"]:
-                    nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
-                    radiation_level = float(nearest_sample["value"])
-                    timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
-                    print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
-                    return radiation_level, timestamp
-                else:
-                    print("[INFO] No radiation samples found.")
-                    return None, None
+    try:
+        print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon})...")
+        response = requests.get(SAFECAST_URL, params=params, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 200:
+            data = response.json()
+            if data and data["measurements"]:
+                nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
+                radiation_level = float(nearest_sample["value"])
+                timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
+                print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
+                return radiation_level, timestamp
             else:
-                print(f"[ERROR] Failed to fetch Safecast data: {response.status_code}")
-        except requests.exceptions.Timeout:
-            print(f"[WARNING] Timeout occurred while fetching Safecast data (attempt {attempt}). Retrying...")
-        except requests.exceptions.RequestException as e:
-            print(f"[ERROR] An error occurred: {e}")
-            break
-        time.sleep(2)  # Backoff before retrying
-    print("[ERROR] Max retries reached. Unable to fetch Safecast data.")
-    return None, None
+                print("[INFO] No radiation samples found.")
+                return None, None
+        elif response.status_code == 429:
+            print("[WARNING] Rate limit exceeded. Skipping Safecast data fetch for this run.")
+            return None, None
+        else:
+            print(f"[ERROR] Failed to fetch Safecast data: {response.status_code}")
+            return None, None
+    except requests.exceptions.Timeout:
+        print("[WARNING] Timeout occurred while fetching Safecast data. Skipping this attempt.")
+        return None, None
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] An error occurred: {e}")
+        return None, None
 
 def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     if simulate_lat and simulate_lon and simulate_radiation:
