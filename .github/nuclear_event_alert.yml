@@ -1,0 +1,29 @@
+name: Nuclear Event Alert
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '*/5 * * * *' # Runs every 5 minutes
+
+jobs:
+  monitor-events:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install requests
+
+    - name: Monitor USGS and Safecast
+      run: |
+        python check_nuclear_events.py
+
+    - name: Send Alert (if triggered)
+      if: success()
+      run: |
+        echo "Alert: Potential Nuclear Detonation Detected"
