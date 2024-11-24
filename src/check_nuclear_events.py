@@ -37,6 +37,7 @@ def get_usgs_events():
         return []
 
 def get_nearest_radiation_sample(lat, lon):
+    # https://api.safecast.org/en-US/home
     params = {
         "distance": 20,  # Distance in kilometers
         "latitude": lat,
