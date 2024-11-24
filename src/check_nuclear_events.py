@@ -65,6 +65,7 @@ def get_nearest_radiation_sample(lat, lon):
             return None, None
     except requests.exceptions.JSONDecodeError:
         print("[ERROR] Invalid JSON response from Safecast API.")
+        print(f"[DEBUG] Raw Response Content: {response.content.decode('utf-8', errors='ignore')}")
         return None, None
     except requests.exceptions.Timeout:
         print("[WARNING] Timeout occurred while fetching Safecast data.")
