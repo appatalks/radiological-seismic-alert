@@ -1,5 +1,7 @@
 # Nuclear Event Alert System
 
+![fine_cyber_punk](https://github.com/user-attachments/assets/5b89f765-4410-4983-bf56-bcde2cf73a40)
+
 ## Overview
 
 The Nuclear Event Alert System is a monitoring tool designed to detect seismic activity and radiation levels in real-time. Combines data from the USGS ([United States Geological Survey](https://earthquake.usgs.gov)) and [Safecast APIs](https://api.safecast.org/en-US/measurements) to identify potential nuclear events and post alerts. 
