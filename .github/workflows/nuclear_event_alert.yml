@@ -1,18 +1,28 @@
-name: Nuclear Event Alert
+name: Nuclear Event Alert System
 
 on:
-  workflow_dispatch:
-  # schedule:
-  #   - cron: '*/5 * * * *' # Runs every 5 minutes
+  schedule:
+    - cron: '*/5 * * * *'  # Runs every 5 minutes
+  workflow_dispatch:  # Allows for manual trigger
+    inputs:
+      simulate_lat:
+        description: 'Latitude for simulation'
+        required: false
+        default: ''
+      simulate_lon:
+        description: 'Longitude for simulation'
+        required: false
+        default: ''
+      simulate_radiation:
+        description: 'Simulated radiation level'
+        required: false
+        default: ''
 
 jobs:
   monitor-events:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -24,9 +34,7 @@ jobs:
 
     - name: Monitor USGS and Safecast
       run: |
-        python src/check_nuclear_events.py
-
-    - name: Send Alert (if triggered)
-      if: success()
-      run: |
-        echo "Alert: Potential Nuclear Detonation Detected"
+        python check_nuclear_events.py \
+          --simulate-lat ${{ inputs.simulate_lat }} \
+          --simulate-lon ${{ inputs.simulate_lon }} \
+          --simulate-radiation ${{ inputs.simulate_radiation }}
