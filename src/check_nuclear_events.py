@@ -76,7 +76,7 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     magnitude = props.get("mag", "Unknown")
     depth = geo[2] if len(geo) > 2 else "Unknown"
     lat, lon = geo[1], geo[0]
-    event_time = datetime.datetime.fromisoformat(props["time"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC") if "time" in props else "Unknown"
+    event_time = datetime.datetime.fromtimestamp(props["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S UTC") if "time" in props else "Unknown"
 
     print(f"[INFO] Most recent seismic event:")
     print(f"  - Magnitude: {magnitude}")
