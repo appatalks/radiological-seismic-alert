@@ -7,7 +7,7 @@
 The Nuclear Event Alert System is a monitoring tool designed to detect seismic activity and radiation levels in real-time. Combines data from the USGS ([United States Geological Survey](https://earthquake.usgs.gov)) and [Safecast APIs](https://api.safecast.org/en-US/measurements) to identify potential nuclear events and post alerts. 
 
 > [!TIP]
-> Monitor [Closetemail's](https://bsky.app/profile/closetemail.com) BlueSky Account for alerts if that is what you are interseted in - as that is what I will be using it for.
+> Monitor [Closetemail's](https://bsky.app/profile/closetemail.com) BlueSky Account for alerts if that is what you are interested in - as that is what I will be using it for.
 
 ## Features
 
