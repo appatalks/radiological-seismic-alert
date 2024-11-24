@@ -37,7 +37,7 @@ jobs:
 
     - name: Monitor USGS and Safecast
       run: |
-        python check_nuclear_events.py \
+        python src/check_nuclear_events.py \
           --simulate-lat ${{ inputs.simulate_lat }} \
           --simulate-lon ${{ inputs.simulate_lon }} \
           --simulate-radiation ${{ inputs.simulate_radiation }}
