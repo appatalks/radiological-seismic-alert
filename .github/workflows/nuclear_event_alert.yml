@@ -1,8 +1,8 @@
 name: Nuclear Event Alert System
 
 on:
-  #schedule:
-  #  - cron: '*/5 * * * *'  # Runs every 5 minutes
+  schedule:
+    - cron: '*/5 * * * *'  # Runs every 5 minutes
   workflow_dispatch:  # Allows for manual trigger
     inputs:
       simulate_lat:
@@ -35,9 +35,20 @@ jobs:
       run: |
         pip install requests
 
-    - name: Monitor USGS and Safecast
+    - name: Build command for monitoring
+      id: build_command
       run: |
-        python src/check_nuclear_events.py \
-          ${{ inputs.simulate_lat && '--simulate-lat ' + inputs.simulate_lat || '' }} \
-          ${{ inputs.simulate_lon && '--simulate-lon ' + inputs.simulate_lon || '' }} \
-          ${{ inputs.simulate_radiation && '--simulate-radiation ' + inputs.simulate_radiation || '' }}
+        CMD="python src/check_nuclear_events.py"
+        if [ "${{ inputs.simulate_lat }}" != "" ]; then
+          CMD="$CMD --simulate-lat ${{ inputs.simulate_lat }}"
+        fi
+        if [ "${{ inputs.simulate_lon }}" != "" ]; then
+          CMD="$CMD --simulate-lon ${{ inputs.simulate_lon }}"
+        fi
+        if [ "${{ inputs.simulate_radiation }}" != "" ]; then
+          CMD="$CMD --simulate-radiation ${{ inputs.simulate_radiation }}"
+        fi
+        echo "command=$CMD" >> $GITHUB_ENV
+
+    - name: Run Monitoring Command
+      run: ${{ env.command }}
