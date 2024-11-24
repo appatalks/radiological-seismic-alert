@@ -48,6 +48,7 @@ def get_nearest_radiation_sample(lat, lon):
         response.raise_for_status()
 
         # Debug: Log the raw response content
+        print(f"[DEBUG] Raw Safecast API call: {response}")
         print(f"[DEBUG] Raw Safecast API Response: {response.text}")
 
         # Parse JSON data
