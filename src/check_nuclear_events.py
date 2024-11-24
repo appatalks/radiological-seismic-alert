@@ -111,11 +111,11 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
         print("[INFO] No radiation samples available for this location.")
 
     if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth != "Unknown" and depth <= DEPTH_THRESHOLD:
-    if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
-        print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
-        print(f"[DETAILS] Detected radiation level: {radiation_level:.2f} {radiation_unit}")
-        print(f"[DETAILS] Radiation sample captured at: {radiation_time}")
-        return        
+        if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
+            print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
+            print(f"[DETAILS] Detected radiation level: {radiation_level:.2f} {radiation_unit}")
+            print(f"[DETAILS] Radiation sample captured at: {radiation_time}")
+            return        
 
     print("[INFO] No significant events detected.")
 
