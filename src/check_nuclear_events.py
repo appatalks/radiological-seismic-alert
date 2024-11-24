@@ -38,12 +38,12 @@ def get_usgs_events():
 
 def get_nearest_radiation_sample(lat, lon):
     params = {
+        "distance": 10,  # Distance in kilometers
         "latitude": lat,
-        "longitude": lon,
-        "distance": 10  # Check within 10 km
+        "longitude": lon
     }
     try:
-        print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon})...")
+        print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon}) with a distance of {params['distance']} km...")
         response = requests.get(SAFECAST_URL, params=params, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
