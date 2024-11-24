@@ -5,8 +5,8 @@ import argparse
 # Constants
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 SAFECAST_URL = "https://api.safecast.org/measurements.json"
-MAG_THRESHOLD = 2.0  # Minimum magnitude
-DEPTH_THRESHOLD = 10.0  # Maximum depth (in km)
+MAG_THRESHOLD = 1.0  # Minimum magnitude
+DEPTH_THRESHOLD = 2.0  # Maximum depth (in km)
 RADIATION_SPIKE_THRESHOLD_CPM = 125  # Example threshold for radiation in CPM
 REQUEST_TIMEOUT = 15  # Timeout for API requests in seconds
 
