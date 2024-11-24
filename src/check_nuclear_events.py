@@ -4,7 +4,7 @@ import argparse
 
 # Constants
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
-SAFECAST_URL = "https://api.safecast.org/measurements"
+SAFECAST_URL = "https://api.safecast.org/measurements.json"
 MAG_THRESHOLD = 4.0  # Minimum magnitude
 DEPTH_THRESHOLD = 10.0  # Maximum depth (in km)
 RADIATION_SPIKE_THRESHOLD = 2.0  # Example threshold for radiation increase
@@ -47,14 +47,9 @@ def get_nearest_radiation_sample(lat, lon):
         response = requests.get(SAFECAST_URL, params=params, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
-        # Check if response content is empty or invalid
-        if not response.content.strip():
-            print("[WARNING] Safecast API returned an empty response.")
-            return None, None
-
         # Parse JSON data
         data = response.json()
-        if data and data["measurements"]:
+        if data and "measurements" in data and data["measurements"]:
             nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
             radiation_level = float(nearest_sample["value"])
             timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
