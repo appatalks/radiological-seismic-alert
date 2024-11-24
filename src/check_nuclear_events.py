@@ -5,14 +5,14 @@ import argparse
 # Constants
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 SAFECAST_URL = "https://api.safecast.org/measurements.json"
-MAG_THRESHOLD = 4.0  # Minimum magnitude
+MAG_THRESHOLD = 2.0  # Minimum magnitude
 DEPTH_THRESHOLD = 10.0  # Maximum depth (in km)
-RADIATION_SPIKE_THRESHOLD = 2.0  # Example threshold for radiation increase
-REQUEST_TIMEOUT = 10  # Timeout for API requests in seconds
+RADIATION_SPIKE_THRESHOLD_CPM = 300  # Example threshold for radiation in CPM
+REQUEST_TIMEOUT = 15  # Timeout for API requests in seconds
 
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=60)  # Expand to the last 60 minutes
+    past = now - datetime.timedelta(minutes=10)  # Expand to the last 60 minutes
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
@@ -38,7 +38,7 @@ def get_usgs_events():
 
 def get_nearest_radiation_sample(lat, lon):
     params = {
-        "distance": 10,  # Distance in kilometers
+        "distance": 20,  # Distance in kilometers
         "latitude": lat,
         "longitude": lon
     }
@@ -54,28 +54,30 @@ def get_nearest_radiation_sample(lat, lon):
         data = response.json()
         if data and "measurements" in data and data["measurements"]:
             nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
-            radiation_level = float(nearest_sample["value"])
-            timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
-            print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
-            return radiation_level, timestamp
+            radiation_value = float(nearest_sample["value"])
+            unit = nearest_sample.get("unit", "unknown")
+            timestamp = nearest_sample["captured_at"]
+
+            print(f"[INFO] Nearest radiation sample: {radiation_value:.2f} {unit} at {timestamp}")
+            return radiation_value, unit, timestamp
         else:
             print("[INFO] No radiation samples found in the specified area.")
-            return None, None
+            return None, None, None
     except requests.exceptions.JSONDecodeError:
         print("[ERROR] Invalid JSON response from Safecast API.")
         print(f"[DEBUG] Raw Response Content: {response.content.decode('utf-8', errors='ignore')}")
-        return None, None
+        return None, None, None
     except requests.exceptions.Timeout:
         print("[WARNING] Timeout occurred while fetching Safecast data.")
-        return None, None
+        return None, None, None
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] An error occurred: {e}")
-        return None, None
+        return None, None, None
 
 def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     if simulate_lat and simulate_lon and simulate_radiation:
-        print(f"[SIMULATION] Simulating event at ({simulate_lat}, {simulate_lon}) with radiation {simulate_radiation} μSv/h.")
-        if float(simulate_radiation) > RADIATION_SPIKE_THRESHOLD:
+        print(f"[SIMULATION] Simulating event at ({simulate_lat}, {simulate_lon}) with radiation {simulate_radiation} CPM.")
+        if float(simulate_radiation) > RADIATION_SPIKE_THRESHOLD_CPM:
             print(f"[ALERT] Simulated radiation exceeds threshold! Possible detonation detected at ({simulate_lat}, {simulate_lon}).")
         else:
             print("[INFO] Simulated radiation does not exceed threshold.")
@@ -100,16 +102,16 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     print(f"  - Location: ({lat}, {lon})")
     print(f"  - Time: {event_time}")
 
-    radiation_level, radiation_time = get_nearest_radiation_sample(lat, lon)
+    radiation_level, radiation_unit, radiation_time = get_nearest_radiation_sample(lat, lon)
     if radiation_level is not None:
         print(f"[INFO] Nearest radiation sample:")
-        print(f"  - Radiation Level: {radiation_level} μSv/h")
+        print(f"  - Radiation Level: {radiation_level:.2f} {radiation_unit}")
         print(f"  - Time: {radiation_time}")
     else:
         print("[INFO] No radiation samples available for this location.")
 
     if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth != "Unknown" and depth <= DEPTH_THRESHOLD:
-        if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD:
+        if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
             print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
             return
 
