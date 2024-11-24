@@ -24,7 +24,7 @@ def check_safecast_radiation(lat, lon):
     params = {
         "latitude": lat,
         "longitude": lon,
-        "distance": 10  # Check within 10 km
+        "distance": 25  # Check within 25 km
     }
     response = requests.get(SAFECAST_URL, params=params)
     data = response.json()
