@@ -89,9 +89,9 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monitor seismic and radiation events.")
-    parser.add_argument("--simulate-lat", type=str, help="Latitude for simulated event")
-    parser.add_argument("--simulate-lon", type=str, help="Longitude for simulated event")
-    parser.add_argument("--simulate-radiation", type=str, help="Simulated radiation level")
+    parser.add_argument("--simulate-lat", type=str, help="Latitude for simulated event", default=None)
+    parser.add_argument("--simulate-lon", type=str, help="Longitude for simulated event", default=None)
+    parser.add_argument("--simulate-radiation", type=str, help="Simulated radiation level", default=None)
     args = parser.parse_args()
 
     main(simulate_lat=args.simulate_lat, simulate_lon=args.simulate_lon, simulate_radiation=args.simulate_radiation)
