@@ -12,7 +12,7 @@ REQUEST_TIMEOUT = 10  # Timeout for API requests in seconds
 
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=60)  # Expand to the last 30 minutes
+    past = now - datetime.timedelta(minutes=60)  # Expand to the last 60 minutes
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
@@ -20,16 +20,20 @@ def get_usgs_events():
         "minmagnitude": 0  # Fetch all events regardless of magnitude
     }
     print(f"[INFO] Fetching USGS events from {past} to {now}...")
-    response = requests.get(USGS_URL, params=params, timeout=REQUEST_TIMEOUT)
-    if response.status_code == 200:
+    try:
+        response = requests.get(USGS_URL, params=params, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
         events = response.json().get("features", [])
         if events:
             return events
         else:
             print("[INFO] No seismic events detected.")
             return []
-    else:
-        print(f"[ERROR] Failed to fetch USGS data: {response.status_code}")
+    except requests.exceptions.Timeout:
+        print("[WARNING] Timeout occurred while fetching USGS data.")
+        return []
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Failed to fetch USGS data: {e}")
         return []
 
 def get_nearest_radiation_sample(lat, lon):
@@ -41,25 +45,29 @@ def get_nearest_radiation_sample(lat, lon):
     try:
         print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon})...")
         response = requests.get(SAFECAST_URL, params=params, timeout=REQUEST_TIMEOUT)
-        if response.status_code == 200:
-            data = response.json()
-            if data and data["measurements"]:
-                nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
-                radiation_level = float(nearest_sample["value"])
-                timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
-                print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
-                return radiation_level, timestamp
-            else:
-                print("[INFO] No radiation samples found.")
-                return None, None
-        elif response.status_code == 429:
-            print("[WARNING] Rate limit exceeded. Skipping Safecast data fetch for this run.")
+        response.raise_for_status()
+
+        # Check if response content is empty or invalid
+        if not response.content.strip():
+            print("[WARNING] Safecast API returned an empty response.")
             return None, None
+
+        # Parse JSON data
+        data = response.json()
+        if data and data["measurements"]:
+            nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
+            radiation_level = float(nearest_sample["value"])
+            timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
+            print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
+            return radiation_level, timestamp
         else:
-            print(f"[ERROR] Failed to fetch Safecast data: {response.status_code}")
+            print("[INFO] No radiation samples found in the specified area.")
             return None, None
+    except requests.exceptions.JSONDecodeError:
+        print("[ERROR] Invalid JSON response from Safecast API.")
+        return None, None
     except requests.exceptions.Timeout:
-        print("[WARNING] Timeout occurred while fetching Safecast data. Skipping this attempt.")
+        print("[WARNING] Timeout occurred while fetching Safecast data.")
         return None, None
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] An error occurred: {e}")
