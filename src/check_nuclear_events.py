@@ -8,16 +8,24 @@ USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 SAFECAST_URL = "https://api.safecast.org/measurements.json"
 MAG_THRESHOLD = 1.0  # Minimum magnitude
 DEPTH_THRESHOLD = 2.0  # Maximum depth (in km)
-RADIATION_SPIKE_THRESHOLD_CPM = 125  # Example threshold for radiation in CPM
+RADIATION_SPIKE_THRESHOLD_CPM = 125  # Threshold for radiation in CPM
 REQUEST_TIMEOUT = 15  # Timeout for API requests in seconds
 
 # Bluesky API Functions
 def bsky_login_session(pds_url: str, handle: str, password: str):
+    payload = {"identifier": handle, "password": password}
+    # print(f"[DEBUG] Payload: {payload}")  # Debugging: Inspect the request payload
     resp = requests.post(
         pds_url + "/xrpc/com.atproto.server.createSession",
-        json={"identifier": handle, "password": password},
+        json=payload,
     )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        print(f"[ERROR] HTTP Error during Bluesky login: {e}")
+        print(f"[DEBUG] Response Status Code: {resp.status_code}")
+        print(f"[DEBUG] Response Content: {resp.text}")
+        raise
     return resp.json()
 
 def create_bsky_post(session, pds_url, post_content, embed=None):
@@ -33,7 +41,7 @@ def create_bsky_post(session, pds_url, post_content, embed=None):
     try:
         resp = requests.post(
             pds_url + "/xrpc/com.atproto.repo.createRecord",
-            headers={"Authorization": f"Bearer {session['accessJwt']}"},
+            headers={"Authorization": "Bearer " + session["accessJwt"]},
             json={
                 "repo": session["did"],
                 "collection": "app.bsky.feed.post",
@@ -42,17 +50,47 @@ def create_bsky_post(session, pds_url, post_content, embed=None):
         )
         resp.raise_for_status()
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error: {e}")
-        print(f"Response Status Code: {resp.status_code}")
-        print(f"Response Content: {resp.text}")
+        print(f"[ERROR] HTTP Error during Bluesky post creation: {e}")
+        print(f"[DEBUG] Response Status Code: {resp.status_code}")
+        print(f"[DEBUG] Response Content: {resp.text}")
         raise
 
     return resp.json()
 
+# Combined Posting Function
+def post_to_bsky(post_type, lat, lon, magnitude=None, depth=None, radiation_level=None, radiation_unit=None, radiation_time=None):
+    pds_url = "https://bsky.social"
+    handle = os.getenv("BLUESKY_CLOSET_H")
+    password = os.getenv("BLUESKY_CLOSET_P")
+
+    session = bsky_login_session(pds_url, handle, password)
+
+    if post_type == "simulation":
+        post_content = (
+            f"🌍 Simulation Results 🌍\n\n"
+            f"Simulated Location: ({lat}, {lon})\n"
+            f"Simulated Radiation Level: {radiation_level} CPM\n\n"
+            f"Simulation completed successfully.\n#Simulation #Radiation"
+        )
+    elif post_type == "alert":
+        post_content = (
+            f"⚠️ Alert: Possible Detonation Detected ⚠️\n\n"
+            f"Location: ({lat}, {lon})\n"
+            f"Seismic Event: Magnitude {magnitude}, Depth {depth} km\n"
+            f"Radiation Level: {radiation_level:.2f} {radiation_unit}\n"
+            f"Captured At: {radiation_time}\n\n"
+            f"#SeismicActivity #RadiationAlert"
+        )
+    else:
+        print("[ERROR] Invalid post type specified.")
+        return
+
+    create_bsky_post(session, pds_url, post_content)
+
 # Seismic and Radiation Functions
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=10)
+    past = now - datetime.timedelta(minutes=15) # Check back in time 15 miniutes for seismic events indicitve of ground burst
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
@@ -104,27 +142,11 @@ def get_nearest_radiation_sample(lat, lon):
         print(f"[ERROR] An error occurred: {e}")
         return None, None, None
 
-def post_alert_to_bsky(lat, lon, magnitude, depth, radiation_level, radiation_unit, radiation_time):
-    pds_url = "https://bsky.social"
-    handle = os.getenv("BLUESKY_HANDLE")
-    password = os.getenv("BLUESKY_PASSWORD")
-
-    session = bsky_login_session(pds_url, handle, password)
-
-    post_content = (
-        f"⚠️ Alert: Possible Detonation Detected ⚠️\n\n"
-        f"Location: ({lat}, {lon})\n"
-        f"Seismic Event: Magnitude {magnitude}, Depth {depth} km\n"
-        f"Radiation Level: {radiation_level:.2f} {radiation_unit}\n"
-        f"Captured At: {radiation_time}\n\n"
-        f"#SeismicActivity #RadiationAlert"
-    )
-    
-    create_bsky_post(session, pds_url, post_content)
-
+# Main Function
 def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     if simulate_lat and simulate_lon and simulate_radiation:
         print(f"[SIMULATION] Simulating event at ({simulate_lat}, {simulate_lon}) with radiation {simulate_radiation} CPM.")
+        post_to_bsky("simulation", simulate_lat, simulate_lon, radiation_level=simulate_radiation)
         if float(simulate_radiation) > RADIATION_SPIKE_THRESHOLD_CPM:
             print(f"[ALERT] Simulated radiation exceeds threshold! Possible detonation detected at ({simulate_lat}, {simulate_lon}).")
         else:
@@ -144,13 +166,14 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     lat, lon = geo[1], geo[0]
     event_time = datetime.datetime.fromtimestamp(props["time"] / 1000).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+    # Only Alert if Seismic AND Radiological activity are detected indicitive of Ground Level Nuclear event
     radiation_level, radiation_unit, radiation_time = get_nearest_radiation_sample(lat, lon)
     if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth <= DEPTH_THRESHOLD:
         if radiation_level and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
             print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
             print(f"[DETAILS] Detected radiation level: {radiation_level:.2f} {radiation_unit}")
             print(f"[DETAILS] Radiation sample captured at: {radiation_time}")
-            post_alert_to_bsky(lat, lon, magnitude, depth, radiation_level, radiation_unit, radiation_time)
+            post_to_bsky("alert", lat, lon, magnitude, depth, radiation_level, radiation_unit, radiation_time)
             return
 
     print("[INFO] No significant events detected.")
