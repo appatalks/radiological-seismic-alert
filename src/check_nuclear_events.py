@@ -12,7 +12,7 @@ REQUEST_TIMEOUT = 10  # Timeout for API requests in seconds
 
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=30)  # Expand to the last 30 minutes
+    past = now - datetime.timedelta(minutes=60)  # Expand to the last 30 minutes
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
