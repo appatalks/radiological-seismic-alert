@@ -11,7 +11,7 @@ RADIATION_SPIKE_THRESHOLD = 2.0  # Example threshold for radiation increase
 
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=10)  # Expand to the last 10 minutes
+    past = now - datetime.timedelta(minutes=30)  # Expand to the last 30 minutes
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
