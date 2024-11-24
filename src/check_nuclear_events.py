@@ -31,27 +31,28 @@ def get_usgs_events():
         print(f"[ERROR] Failed to fetch USGS data: {response.status_code}")
         return []
 
-def check_safecast_radiation(lat, lon):
+def get_nearest_radiation_sample(lat, lon):
     params = {
         "latitude": lat,
         "longitude": lon,
         "distance": 10  # Check within 10 km
     }
-    print(f"[INFO] Checking Safecast radiation levels near ({lat}, {lon})...")
+    print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon})...")
     response = requests.get(SAFECAST_URL, params=params)
     if response.status_code == 200:
         data = response.json()
         if data and data["measurements"]:
-            for measurement in data["measurements"]:
-                radiation_level = float(measurement["value"])
-                print(f"[INFO] Radiation level detected: {radiation_level} μSv/h")
-                if radiation_level > RADIATION_SPIKE_THRESHOLD:
-                    return True
+            nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
+            radiation_level = float(nearest_sample["value"])
+            timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
+            print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
+            return radiation_level, timestamp
         else:
-            print("[INFO] No radiation measurements found.")
+            print("[INFO] No radiation samples found.")
+            return None, None
     else:
         print(f"[ERROR] Failed to fetch Safecast data: {response.status_code}")
-    return False
+        return None, None
 
 def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     # Check for simulation mode
@@ -84,9 +85,18 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     print(f"  - Location: ({lat}, {lon})")
     print(f"  - Time: {event_time}")
 
+    # Fetch and report nearest radiation sample
+    radiation_level, radiation_time = get_nearest_radiation_sample(lat, lon)
+    if radiation_level is not None:
+        print(f"[INFO] Nearest radiation sample:")
+        print(f"  - Radiation Level: {radiation_level} μSv/h")
+        print(f"  - Time: {radiation_time}")
+    else:
+        print("[INFO] No radiation samples available for this location.")
+
     # Check if the latest event meets alert conditions
     if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth != "Unknown" and depth <= DEPTH_THRESHOLD:
-        if check_safecast_radiation(lat, lon):
+        if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD:
             print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
             return
 
