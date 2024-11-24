@@ -1,6 +1,7 @@
 import requests
 import datetime
 import argparse
+import time
 
 # Constants
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
@@ -8,6 +9,8 @@ SAFECAST_URL = "https://api.safecast.org/measurements"
 MAG_THRESHOLD = 4.0  # Minimum magnitude
 DEPTH_THRESHOLD = 10.0  # Maximum depth (in km)
 RADIATION_SPIKE_THRESHOLD = 2.0  # Example threshold for radiation increase
+MAX_RETRIES = 3  # Maximum number of retries for API requests
+REQUEST_TIMEOUT = 10  # Timeout for API requests in seconds
 
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
@@ -19,7 +22,7 @@ def get_usgs_events():
         "minmagnitude": 0  # Fetch all events regardless of magnitude
     }
     print(f"[INFO] Fetching USGS events from {past} to {now}...")
-    response = requests.get(USGS_URL, params=params)
+    response = requests.get(USGS_URL, params=params, timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         events = response.json().get("features", [])
         if events:
@@ -37,25 +40,33 @@ def get_nearest_radiation_sample(lat, lon):
         "longitude": lon,
         "distance": 10  # Check within 10 km
     }
-    print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon})...")
-    response = requests.get(SAFECAST_URL, params=params)
-    if response.status_code == 200:
-        data = response.json()
-        if data and data["measurements"]:
-            nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
-            radiation_level = float(nearest_sample["value"])
-            timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
-            print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
-            return radiation_level, timestamp
-        else:
-            print("[INFO] No radiation samples found.")
-            return None, None
-    else:
-        print(f"[ERROR] Failed to fetch Safecast data: {response.status_code}")
-        return None, None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            print(f"[INFO] Fetching nearest radiation sample near ({lat}, {lon}), attempt {attempt}...")
+            response = requests.get(SAFECAST_URL, params=params, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 200:
+                data = response.json()
+                if data and data["measurements"]:
+                    nearest_sample = min(data["measurements"], key=lambda x: x.get("value", float('inf')))
+                    radiation_level = float(nearest_sample["value"])
+                    timestamp = datetime.datetime.fromisoformat(nearest_sample["captured_at"][:-1]).strftime("%Y-%m-%d %H:%M:%S UTC")
+                    print(f"[INFO] Nearest radiation sample: {radiation_level} μSv/h at {timestamp}")
+                    return radiation_level, timestamp
+                else:
+                    print("[INFO] No radiation samples found.")
+                    return None, None
+            else:
+                print(f"[ERROR] Failed to fetch Safecast data: {response.status_code}")
+        except requests.exceptions.Timeout:
+            print(f"[WARNING] Timeout occurred while fetching Safecast data (attempt {attempt}). Retrying...")
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] An error occurred: {e}")
+            break
+        time.sleep(2)  # Backoff before retrying
+    print("[ERROR] Max retries reached. Unable to fetch Safecast data.")
+    return None, None
 
 def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
-    # Check for simulation mode
     if simulate_lat and simulate_lon and simulate_radiation:
         print(f"[SIMULATION] Simulating event at ({simulate_lat}, {simulate_lon}) with radiation {simulate_radiation} μSv/h.")
         if float(simulate_radiation) > RADIATION_SPIKE_THRESHOLD:
@@ -64,13 +75,11 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
             print("[INFO] Simulated radiation does not exceed threshold.")
         return
 
-    # Fetch seismic events
     events = get_usgs_events()
     if not events:
         print("[INFO] No seismic events detected.")
         return
 
-    # Report the most recent event
     latest_event = events[0]
     props = latest_event["properties"]
     geo = latest_event["geometry"]["coordinates"]
@@ -85,7 +94,6 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     print(f"  - Location: ({lat}, {lon})")
     print(f"  - Time: {event_time}")
 
-    # Fetch and report nearest radiation sample
     radiation_level, radiation_time = get_nearest_radiation_sample(lat, lon)
     if radiation_level is not None:
         print(f"[INFO] Nearest radiation sample:")
@@ -94,7 +102,6 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
     else:
         print("[INFO] No radiation samples available for this location.")
 
-    # Check if the latest event meets alert conditions
     if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth != "Unknown" and depth <= DEPTH_THRESHOLD:
         if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD:
             print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
