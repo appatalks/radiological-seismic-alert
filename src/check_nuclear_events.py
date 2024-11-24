@@ -7,12 +7,12 @@ USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 SAFECAST_URL = "https://api.safecast.org/measurements.json"
 MAG_THRESHOLD = 2.0  # Minimum magnitude
 DEPTH_THRESHOLD = 10.0  # Maximum depth (in km)
-RADIATION_SPIKE_THRESHOLD_CPM = 300  # Example threshold for radiation in CPM
+RADIATION_SPIKE_THRESHOLD_CPM = 125  # Example threshold for radiation in CPM
 REQUEST_TIMEOUT = 15  # Timeout for API requests in seconds
 
 def get_usgs_events():
     now = datetime.datetime.now(datetime.UTC)
-    past = now - datetime.timedelta(minutes=60)  # Expand to the last 60 minutes
+    past = now - datetime.timedelta(minutes=10)  # Expand to the last 10 minutes
     params = {
         "format": "geojson",
         "starttime": past.isoformat(),
@@ -111,9 +111,11 @@ def main(simulate_lat=None, simulate_lon=None, simulate_radiation=None):
         print("[INFO] No radiation samples available for this location.")
 
     if isinstance(magnitude, (int, float)) and magnitude >= MAG_THRESHOLD and depth != "Unknown" and depth <= DEPTH_THRESHOLD:
-        if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
-            print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
-            return
+    if radiation_level is not None and radiation_level > RADIATION_SPIKE_THRESHOLD_CPM:
+        print(f"[ALERT] Possible detonation detected at ({lat}, {lon})!")
+        print(f"[DETAILS] Detected radiation level: {radiation_level:.2f} {radiation_unit}")
+        print(f"[DETAILS] Radiation sample captured at: {radiation_time}")
+        return        
 
     print("[INFO] No significant events detected.")
 
